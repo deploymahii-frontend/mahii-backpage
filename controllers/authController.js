@@ -267,12 +267,69 @@ exports.registerShopOwner = async (req, res) => {
 // @access  Public
 exports.login = async (req, res) => {
   try {
-    const { email, password, role } = req.body;
+    const { email, password, role, firebaseUid, idToken, displayName, photoUrl, isGoogleAuth } = req.body;
 
-    if (!email || !password || !role) {
+    if (!email || !role) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide email, password, and role'
+        message: 'Please provide email and role'
+      });
+    }
+
+    // Handle Firebase Google authentication
+    if (isGoogleAuth && firebaseUid) {
+      let user = await User.findOne({ $or: [{ email: email.toLowerCase() }, { firebaseUid }] });
+
+      if (!user) {
+        // Create new user for Google authentication
+        user = await User.create({
+          name: displayName || email.split('@')[0],
+          email: email.toLowerCase().trim(),
+          firebaseUid: firebaseUid,
+          role: role,
+          isVerified: true,
+          isApproved: true,
+          photoUrl: photoUrl,
+          authProvider: 'google'
+        });
+      } else {
+        // Update existing user with Firebase info if not already set
+        if (!user.firebaseUid) {
+          user.firebaseUid = firebaseUid;
+          user.photoUrl = photoUrl || user.photoUrl;
+          user.authProvider = 'google';
+          await user.save();
+        }
+      }
+
+      const token = jwt.sign(
+        { id: user._id, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRE || '7d' }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: 'Google login successful',
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          isApproved: user.isApproved,
+          photoUrl: user.photoUrl,
+          authProvider: user.authProvider
+        }
+      });
+    }
+
+    // Handle regular email/password authentication
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide password'
       });
     }
 

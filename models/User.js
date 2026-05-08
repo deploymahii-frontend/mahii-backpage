@@ -20,7 +20,9 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Please add password'],
+    required: function() {
+      return this.authProvider !== 'google'; // Password not required for Google auth
+    },
     minlength: 6,
     select: false,
   },
@@ -28,6 +30,21 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['customer', 'shopowner', 'admin', 'super_admin'],
     default: 'customer',
+  },
+  // Firebase authentication fields
+  firebaseUid: {
+    type: String,
+    unique: true,
+    sparse: true, // Allows null values but ensures uniqueness when present
+  },
+  authProvider: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local',
+  },
+  photoUrl: {
+    type: String,
+    default: null,
   },
   profileImage: String,
   bio: {
