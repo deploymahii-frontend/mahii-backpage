@@ -178,6 +178,14 @@ exports.activateSubscription = async (req, res) => {
       });
     }
 
+    // Verify the user owns this subscription
+    if (subscription.userId.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to activate this subscription',
+      });
+    }
+
     // Verify payment with Razorpay
     const isValid = razorpay.verifyPayment(razorpayOrderId, paymentId, signature);
     
@@ -375,11 +383,22 @@ exports.getAttendanceHistory = async (req, res) => {
     }
 
     // Check authorization
-    if (subscription.userId.toString() !== req.user.id && req.user.role !== 'shopowner') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized',
-      });
+    if (subscription.userId.toString() !== req.user.id) {
+      if (req.user.role === 'shopowner') {
+        // Verify shop owner owns the shop for this subscription
+        const shop = await Shop.findOne({ _id: subscription.shopId, ownerId: req.user.id });
+        if (!shop) {
+          return res.status(403).json({
+            success: false,
+            message: 'Not authorized to view this attendance',
+          });
+        }
+      } else {
+        return res.status(403).json({
+          success: false,
+          message: 'Not authorized',
+        });
+      }
     }
 
     // Group attendance by date
@@ -516,6 +535,15 @@ exports.closeSubscriptionByOwner = async (req, res) => {
 exports.getShopSubscriptions = async (req, res) => {
   try {
     const { shopId } = req.params;
+
+    // Verify shop owner owns this shop
+    const shop = await Shop.findOne({ _id: shopId, ownerId: req.user.id });
+    if (!shop) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to view subscriptions for this shop',
+      });
+    }
 
     const subscriptions = await Subscription.find({ shopId })
       .populate('userId', 'name email phone')
